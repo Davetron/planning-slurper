@@ -13,24 +13,67 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Create test JSON
-        run: |
-          mkdir -p out
-          cat > out/test.json <<EOF
-          {
-            "status": "ok",
-            "source": "github-actions",
-            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          }
-          EOF
-          cat out/test.json
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-      - name: Upload test.json to R2
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Sync and Analysis
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python3 main.py
+
+      - name: Upload agents_latest.json to R2
         uses: magicwallet/r2-upload@main
         with:
           endpoint: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
           access_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
           secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           bucket: ${{ secrets.R2_BUCKET }}
-          file: out/test.json
-          destination: 'test/test.json'
+          file: out/agents_latest.json
+          destination: 'data/agents_latest.json'
+
+      - name: Upload churn_latest.json to R2
+        uses: magicwallet/r2-upload@main
+        with:
+          endpoint: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          access_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          bucket: ${{ secrets.R2_BUCKET }}
+          file: out/churn_latest.json
+          destination: 'data/churn_latest.json'
+
+      - name: Upload failures_latest.json to R2
+        uses: magicwallet/r2-upload@main
+        with:
+          endpoint: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          access_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          bucket: ${{ secrets.R2_BUCKET }}
+          file: out/failures_latest.json
+          destination: 'data/failures_latest.json'
+
+      - name: Upload lifecycle_latest.json to R2
+        uses: magicwallet/r2-upload@main
+        with:
+          endpoint: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          access_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          bucket: ${{ secrets.R2_BUCKET }}
+          file: out/lifecycle_latest.json
+          destination: 'data/lifecycle_latest.json'
+
+      - name: Upload spread_latest.json to R2
+        uses: magicwallet/r2-upload@main
+        with:
+          endpoint: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          access_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          bucket: ${{ secrets.R2_BUCKET }}
+          file: out/spread_latest.json
+          destination: 'data/spread_latest.json'
