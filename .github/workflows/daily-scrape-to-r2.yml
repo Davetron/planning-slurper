@@ -24,6 +24,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Sync and Analysis
+        env:
+          DATABASE_URL: ${{ env.DB_URL }}
         run: python3 main.py
 
       - name: Upload agents_latest.json to R2
