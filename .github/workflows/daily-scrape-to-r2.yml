@@ -25,7 +25,7 @@ jobs:
 
       - name: Run Sync and Analysis
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ env.DATABASE_URL }}
         run: python3 main.py
 
       - name: Upload agents_latest.json to R2
