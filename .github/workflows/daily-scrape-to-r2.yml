@@ -1,17 +1,16 @@
 name: test-r2-upload
 
-on:
-  workflow_dispatch: {}
+on: [push, workflow_dispatch]
 
 jobs:
-  test:
+  deploy:
     runs-on: ubuntu-latest
     environment: Prod
     permissions:
       contents: read
-
+    name: Deploy to Cloudflare Pages
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Create test JSON
@@ -26,30 +25,12 @@ jobs:
           EOF
           cat out/test.json
 
-      - name: Install AWS CLI (pip)
-        run: |
-          python -m pip install --upgrade pip
-          pip install awscli
-          aws --version
-
       - name: Upload test.json to R2
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
-        run: |
-          ENDPOINT="https://${{ env.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
-          aws s3 cp out/test.json "s3://${{ env.R2_BUCKET }}/test/test.json" \
-            --endpoint-url "${ENDPOINT}" \
-            --content-type "application/json"
-
-      - name: List bucket contents (sanity check)
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
-        run: |
-          aws s3 ls "s3://${{ env.R2_BUCKET }}/test/" \
-            --endpoint-url "https://${{ env.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
+        uses: magicwallet/r2-upload@main
+        with:
+          endpoint: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          access_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          bucket: ${{ secrets.R2_BUCKET }}
+          file: out/test.json
+          destination: 'test/test.json'
