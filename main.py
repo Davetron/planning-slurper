@@ -482,8 +482,13 @@ def hydrate_all_applications(limit=None, skip_hydrated=False, lpa_filter=None):
     where_clauses = []
 
     if skip_hydrated:
-        # Check explicit last_hydrated_at timestamp
-        where_clauses.append("last_hydrated_at IS NULL")
+        # Check explicit last_hydrated_at timestamp OR existence of linked data
+        complex_clause = """(
+            last_hydrated_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.app_id = a.id AND d.lpa = a.lpa)
+            AND NOT EXISTS (SELECT 1 FROM conditions c WHERE c.app_id = a.id AND c.lpa = a.lpa)
+        )"""
+        where_clauses.append(complex_clause)
     
     if lpa_filter:
         where_clauses.append("lpa = %s")
