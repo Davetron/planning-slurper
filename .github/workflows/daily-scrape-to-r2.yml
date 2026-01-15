@@ -40,9 +40,6 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
           ENDPOINT="https://${{ env.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
-          echo "Endpoint: ${ENDPOINT}"
-          echo "Bucket: ${env.R2_BUCKET}"
-
           aws s3 cp out/test.json "s3://${{ env.R2_BUCKET }}/test/test.json" \
             --endpoint-url "${ENDPOINT}" \
             --content-type "application/json"
