@@ -8,7 +8,7 @@ jobs:
     environment: Prod
     permissions:
       contents: read
-    name: Deploy to Cloudflare Pages
+    name: Deploy stats to Cloudflare R2
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,8 +24,6 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Sync and Analysis
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
         run: python3 main.py
 
       - name: Upload agents_latest.json to R2
