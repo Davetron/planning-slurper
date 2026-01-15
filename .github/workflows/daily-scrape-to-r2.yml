@@ -7,6 +7,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     environment: Production
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repo
@@ -37,9 +39,11 @@ jobs:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
-          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          ENDPOINT="https://${{ env.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
+          echo "Endpoint: ${ENDPOINT}"
+          echo "Bucket: ${env.R2_BUCKET}"
 
-          aws s3 cp out/test.json "s3://${R2_BUCKET}/test/test.json" \
+          aws s3 cp out/test.json "s3://${{ env.R2_BUCKET }}/test/test.json" \
             --endpoint-url "${ENDPOINT}" \
             --content-type "application/json"
 
@@ -50,5 +54,5 @@ jobs:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
-          aws s3 ls "s3://${R2_BUCKET}/test/" \
-            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 ls "s3://${{ env.R2_BUCKET }}/test/" \
+            --endpoint-url "https://${{ env.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
