@@ -1,2 +1,5 @@
 .env
 applications.db
+out/*
+!out/.gitkeep
+__pycache__/

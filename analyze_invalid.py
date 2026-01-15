@@ -46,7 +46,7 @@ def analyze_detailed_failures():
                 SELECT c.long_desc 
                 FROM conditions c 
                 JOIN applications a ON c.app_id = a.id AND c.lpa = a.lpa
-                WHERE a.decision LIKE '%INVALID%' AND c.short_desc = %s
+                WHERE a.decision LIKE '%%INVALID%%' AND c.short_desc = %s
             """, (category,))
             
             descriptions = c.fetchall()

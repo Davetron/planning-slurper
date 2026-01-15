@@ -562,16 +562,16 @@ from analyze_invalid import analyze_detailed_failures
 from analyze_lifecycle import analyze_lifecycle
 from analyze_spread import analyze_spread
 
-def run_pipeline():
+import argparse
+import sys
+
+# ... previous imports ...
+
+def run_sync_stage():
     """
-    Runs the full pipeline:
-    1. Sync all LPAs.
-    2. Run all analyses.
-    3. Output results to out/latest.json.
+    Executes the synchronization stage for all LPAs.
     """
-    print("=== Starting Full Pipeline ===", flush=True)
-    
-    # 1. Sync
+    print("=== Starting Sync Stage ===", flush=True)
     lpas = ["dunlaoghaire", "fingal", "dublincity", "southdublin"]
     
     # Run setup once to avoid race conditions on table creation
@@ -580,8 +580,6 @@ def run_pipeline():
     print(f"Syncing {len(lpas)} LPAs in parallel...", flush=True)
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(lpas)) as executor:
-        # We wrap run_sync_job to swallow setup_database redundancy or just let it be.
-        # run_sync_job calls setup_database(), but since we ran it above, it's fine.
         futures = {executor.submit(run_sync_job, limit=None, lpa=lpa): lpa for lpa in lpas}
         
         for future in concurrent.futures.as_completed(futures):
@@ -591,33 +589,74 @@ def run_pipeline():
                 print(f"=== Finished Syncing {lpa} ===", flush=True)
             except Exception as e:
                 print(f"generated an exception during sync for {lpa}: {e}", flush=True)
-        
-    # 2. Analyze
-    print("\n=== Running Analyses ===", flush=True)
+
+def run_analysis_stage():
+    """
+    Executes the analysis stage and writes output to JSON.
+    """
+    print("\n=== Starting Analysis Stage ===", flush=True)
     
-    analysis_results = {
-        "timestamp": datetime.now().isoformat(),
-        "agents": analyze_agents(),
-        "churn": analyze_churn_agents(),
-        "failures": analyze_detailed_failures(),
-        "lifecycle": analyze_lifecycle(),
-        "spread": analyze_spread()
+    analysis_map = {
+        "agents_latest.json": analyze_agents,
+        "churn_latest.json": analyze_churn_agents,
+        "failures_latest.json": analyze_detailed_failures,
+        "lifecycle_latest.json": analyze_lifecycle,
+        "spread_latest.json": analyze_spread
     }
     
-    # 3. Output
+    # Output directory
     out_dir = "out"
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
         
-    out_file = os.path.join(out_dir, "latest.json")
-    print(f"\n=== Writing Results to {out_file} ===", flush=True)
+    timestamp = datetime.now().isoformat()
     
-    with open(out_file, 'w') as f:
-        json.dump(analysis_results, f, indent=2)
+    for filename, func in analysis_map.items():
+        print(f"Running {func.__name__}...", flush=True)
+        try:
+            data = func()
+            result = {
+                "timestamp": timestamp,
+                "data": data
+            }
+            
+            out_path = os.path.join(out_dir, filename)
+            print(f"Writing to {out_path}", flush=True)
+            with open(out_path, 'w') as f:
+                json.dump(result, f, indent=2)
+                
+        except Exception as e:
+            print(f"Error running {func.__name__}: {e}", flush=True)
+    
+    print("Analysis Complete.", flush=True)
+
+def run_pipeline(skip_sync=False, skip_analysis=False):
+    """
+    Runs the pipeline based on flags.
+    """
+    if not skip_sync:
+        run_sync_stage()
+    else:
+        print("Skipping Sync Stage.")
         
-    print("Pipeline Complete.", flush=True)
+    if not skip_analysis:
+        run_analysis_stage()
+    else:
+        print("Skipping Analysis Stage.")
 
 # --- Entry Point ---
 
 if __name__ == "__main__":
-    run_pipeline()
+    parser = argparse.ArgumentParser(description="Planning Slurper Pipeline")
+    parser.add_argument("--analyze-only", action="store_true", help="Run only the analysis stage")
+    parser.add_argument("--sync-only", action="store_true", help="Run only the sync stage")
+    
+    args = parser.parse_args()
+    
+    if args.analyze_only:
+        run_pipeline(skip_sync=True)
+    elif args.sync_only:
+        run_pipeline(skip_analysis=True)
+    else:
+        run_pipeline()
+
