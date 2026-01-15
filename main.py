@@ -42,15 +42,30 @@ def _create_schema(c):
                  (id INTEGER, 
                   lpa TEXT,
                   reference TEXT, 
-                  registration_date TEXT, 
+                  registration_date DATE, 
                   description TEXT, 
-                  raw_json TEXT,
+                  raw_json JSONB,
                   location TEXT,
                   decision TEXT,
                   status TEXT,
                   grid_x DOUBLE PRECISION,
                   grid_y DOUBLE PRECISION,
+                  last_hydrated_at TIMESTAMP,
                   PRIMARY KEY (id, lpa))''')
+    
+    try:
+        c.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS last_hydrated_at TIMESTAMP")
+        
+        # Migration: text -> date
+        c.execute("ALTER TABLE applications ALTER COLUMN registration_date TYPE DATE USING registration_date::date")
+        
+        # Migration: text -> jsonb
+        c.execute("ALTER TABLE applications ALTER COLUMN raw_json TYPE JSONB USING raw_json::jsonb")
+        
+    except psycopg2.Error as e:
+         print(f"Migration notice: {e}")
+         # Continue, likely already exists or other non-fatal
+         pass
                   
     # 2. Documents Table (Composite FK)
     c.execute('''CREATE TABLE IF NOT EXISTS documents
@@ -377,6 +392,13 @@ def hydrate_application(app_id, lpa="dunlaoghaire"):
                 for c in conds:
                     save_condition_record(app_id, c, lpa=lpa)
 
+        # 4. Mark as hydrated
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("UPDATE applications SET last_hydrated_at = NOW() WHERE id = %s AND lpa = %s", (app_id, lpa))
+        conn.commit()
+        conn.close()
+
     except Exception as e:
         print(f"Error hydrating app {app_id}: {e}", flush=True)
 
@@ -460,13 +482,11 @@ def hydrate_all_applications(limit=None, skip_hydrated=False, lpa_filter=None):
     where_clauses = []
 
     if skip_hydrated:
-        # Filter out applications that already have documents using LEFT JOIN / IS NULL check
-        # This is much faster than fetching all and filtering in Python
-        query += " LEFT JOIN documents d ON a.id = d.app_id AND a.lpa = d.lpa"
-        where_clauses.append("d.id IS NULL")
+        # Check explicit last_hydrated_at timestamp
+        where_clauses.append("last_hydrated_at IS NULL")
     
     if lpa_filter:
-        where_clauses.append("a.lpa = %s")
+        where_clauses.append("lpa = %s")
         params.append(lpa_filter)
 
     if where_clauses:
