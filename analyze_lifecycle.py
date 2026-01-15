@@ -5,76 +5,10 @@ from datetime import datetime
 import re
 import os
 import dotenv
+from shared_utils import normalize_text, get_fullname, get_agent, location_match
 
 dotenv.load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
-
-def normalize_text(text):
-    if not text: return ""
-    # Lowercase, remove emails, remove ref codes
-    text = text.lower()
-    text = re.sub(r'<[^>]+>', '', text) # Remove emails <foo@bar.com>
-    text = re.sub(r'\([^\)]+\)', '', text) # Remove parens
-    # Remove common suffixes
-    text = re.sub(r'\b(ltd|limited|arch|architects|planning|assoc|associates|consultants|unknown)\b', '', text)
-    # Remove whitespace
-    return " ".join(text.split())
-
-def get_fullname(raw_app):
-    """Constructs applicant name from JSON fields."""
-    fore = raw_app.get('applicantForename') or ''
-    sur = raw_app.get('applicantSurname') or ''
-    return normalize_text(f"{fore} {sur}")
-
-def get_agent(raw_app):
-    """Constructs agent name."""
-    # Prioritize agentContactName as it's often the full name
-    name = raw_app.get('agentContactName') or raw_app.get('agentName') or ''
-    sur = raw_app.get('agentSurname') or ''
-    if not name and sur: name = sur
-    return normalize_text(name)
-
-def location_match(app1, app2):
-    """
-    Checks if locations match.
-    """
-    # Grid Match (Best)
-    try:
-        x1, y1 = app1.get('easting'), app1.get('northing')
-        x2, y2 = app2.get('easting'), app2.get('northing')
-        if x1 and y1 and x2 and y2:
-            dist = math.sqrt((x1-x2)**2 + (y1-y2)**2)
-            if dist < 50: # 50 meters tolerance
-                return True
-    except: pass
-    
-    # String Match (Fallback)
-    def clean_loc(loc):
-        loc = loc.lower().replace(',', ' ').replace('.', '')
-        # Normalize abbreviations
-        loc = re.sub(r'\bst\b', 'street', loc)
-        loc = re.sub(r'\brd\b', 'road', loc)
-        loc = re.sub(r'\bave\b', 'avenue', loc)
-        return set(loc.split())
-        
-    loc1 = clean_loc(app1.get('location', ''))
-    loc2 = clean_loc(app2.get('location', ''))
-    
-    # Filter common words
-    common = {'at', 'the', 'of', 'site', 'land', 'co', 'dublin', 'road', 'street', 'avenue', 'house', 'development', 'permission'}
-    loc1 = loc1 - common
-    loc2 = loc2 - common
-    
-    if not loc1 or not loc2: return False
-    
-    # Jaccard index
-    overlap = len(loc1.intersection(loc2))
-    union = len(loc1.union(loc2))
-    
-    if union > 0 and (overlap / union) > 0.6: 
-        return True
-        
-    return False
 
 def analyze_lifecycle():
     if not DATABASE_URL:
@@ -179,6 +113,14 @@ def analyze_lifecycle():
     print("\n--- Invalid Application Lifecycle Analysis (Refined) ---")
     print(f"Total Invalid Applications: {total_invalids}")
     
+    stats = {
+        'total_invalids': total_invalids,
+        'follow_up_rate': 0,
+        'abandon_rate': 0,
+        'avg_days_to_reapply': 0,
+        'architect_churn_rate': 0
+    }
+
     if total_invalids > 0:
         follow_rate = (followed_up_count / total_invalids) * 100
         abandon_rate = (abandoned_count / total_invalids) * 100
@@ -190,12 +132,21 @@ def analyze_lifecycle():
         print(f"Avg Time to Re-apply: {avg_days:.1f} days")
         print(f"Architect Churn Rate: {churn_rate:.1f}% ({architect_churn_count} changes)")
         
+        stats.update({
+            'follow_up_rate': follow_rate,
+            'abandon_rate': abandon_rate,
+            'avg_days_to_reapply': avg_days,
+            'architect_churn_rate': churn_rate
+        })
+        
         # print("\nSample Churns:")
         # for i in range(min(5, len(matched_pairs))):
         #    print(f"  App {matched_pairs[i][0]} -> {matched_pairs[i][1]}: '{matched_pairs[i][2]}' -> '{matched_pairs[i][3]}'")
         
     else:
         print("No invalid applications found to analyze.")
+        
+    return stats
 
 if __name__ == "__main__":
     analyze_lifecycle()

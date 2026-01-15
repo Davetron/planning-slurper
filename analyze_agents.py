@@ -6,37 +6,11 @@ import csv
 import sys
 from collections import defaultdict, Counter
 import dotenv
+from shared_utils import normalize_text, extract_email, get_agent
 
 dotenv.load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-
-def normalize_text(text):
-    if not text: return "Unknown/None"
-    text = text.lower()
-    text = re.sub(r'<[^>]+>', '', text)
-    text = re.sub(r'\([^\)]+\)', '', text)
-    text = re.sub(r'\b(ltd|limited|arch|architects|planning|assoc|associates|consultants|unknown|services|design|engineers)\b', '', text)
-    text = re.sub(r'[^\w\s]', '', text) # Remove punctuation
-    return " ".join(text.split())
-
-def extract_email(text):
-    if not text: return ""
-    # Try to find email inside < >
-    match = re.search(r'<([^>]+)>', text)
-    if match:
-        return match.group(1).strip()
-    # Otherwise assume the whole thing or look for simple email pattern
-    match = re.search(r'[\w\.-]+@[\w\.-]+', text)
-    if match:
-        return match.group(0)
-    return text.strip()
-
-def get_agent(raw_app):
-    name = raw_app.get('agentContactName') or raw_app.get('agentName') or ''
-    sur = raw_app.get('agentSurname') or ''
-    if not name and sur: name = sur
-    return normalize_text(name)
 
 def analyze_agents():
     if not DATABASE_URL:
@@ -127,6 +101,8 @@ def analyze_agents():
     print("-" * 80)
     for r in by_rate[:20]:
         print(f"{r['name'][:30]:<30} | {r['invalid']:<5} | {r['rate']:.1f}%   | {r['email']}")
+        
+    return by_volume
 
 if __name__ == "__main__":
     analyze_agents()

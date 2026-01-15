@@ -6,6 +6,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import dotenv
 from datetime import datetime, timedelta
+import concurrent.futures
 
 dotenv.load_dotenv()
 
@@ -554,21 +555,69 @@ def run_sync_job(limit=100, date_from=None, date_to=None, lpa="dunlaoghaire"):
 
 # --- Entry Point ---
 
+# --- Analysis Imports ---
+from analyze_agents import analyze_agents
+from analyze_churn_agents import analyze_churn_agents
+from analyze_invalid import analyze_detailed_failures
+from analyze_lifecycle import analyze_lifecycle
+from analyze_spread import analyze_spread
+
+def run_pipeline():
+    """
+    Runs the full pipeline:
+    1. Sync all LPAs.
+    2. Run all analyses.
+    3. Output results to out/latest.json.
+    """
+    print("=== Starting Full Pipeline ===", flush=True)
+    
+    # 1. Sync
+    lpas = ["dunlaoghaire", "fingal", "dublincity", "southdublin"]
+    
+    # Run setup once to avoid race conditions on table creation
+    setup_database()
+    
+    print(f"Syncing {len(lpas)} LPAs in parallel...", flush=True)
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(lpas)) as executor:
+        # We wrap run_sync_job to swallow setup_database redundancy or just let it be.
+        # run_sync_job calls setup_database(), but since we ran it above, it's fine.
+        futures = {executor.submit(run_sync_job, limit=None, lpa=lpa): lpa for lpa in lpas}
+        
+        for future in concurrent.futures.as_completed(futures):
+            lpa = futures[future]
+            try:
+                future.result()
+                print(f"=== Finished Syncing {lpa} ===", flush=True)
+            except Exception as e:
+                print(f"generated an exception during sync for {lpa}: {e}", flush=True)
+        
+    # 2. Analyze
+    print("\n=== Running Analyses ===", flush=True)
+    
+    analysis_results = {
+        "timestamp": datetime.now().isoformat(),
+        "agents": analyze_agents(),
+        "churn": analyze_churn_agents(),
+        "failures": analyze_detailed_failures(),
+        "lifecycle": analyze_lifecycle(),
+        "spread": analyze_spread()
+    }
+    
+    # 3. Output
+    out_dir = "out"
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+        
+    out_file = os.path.join(out_dir, "latest.json")
+    print(f"\n=== Writing Results to {out_file} ===", flush=True)
+    
+    with open(out_file, 'w') as f:
+        json.dump(analysis_results, f, indent=2)
+        
+    print("Pipeline Complete.", flush=True)
+
+# --- Entry Point ---
+
 if __name__ == "__main__":
-    # Run sync for Dun Laoghaire
-    print("\n=== Syncing Dun Laoghaire ===")
-    run_sync_job(limit=None, lpa="dunlaoghaire")
-    
-    # Run sync for Fingal
-    print("\n=== Syncing Fingal ===")
-    run_sync_job(limit=None, lpa="fingal")
-
-    # Run sync for Dublin City
-    print("\n=== Syncing Dublin City ===")
-    run_sync_job(limit=None, lpa="dublincity")
-
-    # Run sync for South Dublin
-    print("\n=== Syncing South Dublin ===")
-    run_sync_job(limit=None, lpa="southdublin")
-    
-    pass
+    run_pipeline()

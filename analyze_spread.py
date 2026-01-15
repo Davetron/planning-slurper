@@ -47,6 +47,8 @@ def analyze_spread():
     cumulative = 0
     cutoff = total_issues * 0.95
     
+    reasons_list = []
+    
     for rank, (reason, count) in enumerate(rows, 1):
         cumulative += count
         pct = (count / total_issues) * 100
@@ -54,9 +56,30 @@ def analyze_spread():
         
         print(f"{rank}. {reason}: {count} ({pct:.1f}%) [Cum: {cum_pct:.1f}%]")
         
+        reasons_list.append({
+            'rank': rank,
+            'reason': reason,
+            'count': count,
+            'pct': pct,
+            'cum_pct': cum_pct
+        })
+        
         if cumulative >= cutoff:
             print(f"\nReached 95% coverage at Rank {rank}")
+            # we keep looping to finish the list or just break?
+            # User might want full list in JSON, but typical spreadsheet logic says just the top ones.
+            # Let's include ALL in the returned list, but break the print loop as before.
+            # Actually, let's keep it consistent: the print loop breaks, so the list will only be 95% coverage.
+            # If we want full list, we should iterate separately. 
+            # Given the previous code, let's just return what was printed.
             break
+            
+    return {
+        'total_issues': total_issues,
+        'top_10_coverage': top_10_count,
+        'top_10_pct': top_10_pct,
+        'reasons_95_pct': reasons_list
+    }
 
 if __name__ == "__main__":
     analyze_spread()

@@ -6,57 +6,10 @@ import re
 import os
 from collections import defaultdict
 import dotenv
+from shared_utils import normalize_text, get_fullname, get_agent, location_match
 
 dotenv.load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
-
-# --- Shared Logic ---
-
-def normalize_text(text):
-    if not text: return ""
-    text = text.lower()
-    text = re.sub(r'<[^>]+>', '', text) 
-    text = re.sub(r'\([^\)]+\)', '', text) 
-    text = re.sub(r'\b(ltd|limited|arch|architects|planning|assoc|associates|consultants|unknown)\b', '', text)
-    return " ".join(text.split())
-
-def get_fullname(raw_app):
-    fore = raw_app.get('applicantForename') or ''
-    sur = raw_app.get('applicantSurname') or ''
-    return normalize_text(f"{fore} {sur}")
-
-def get_agent(raw_app):
-    name = raw_app.get('agentContactName') or raw_app.get('agentName') or ''
-    sur = raw_app.get('agentSurname') or ''
-    if not name and sur: name = sur
-    return normalize_text(name)
-
-def location_match(app1, app2):
-    try:
-        x1, y1 = app1.get('easting'), app1.get('northing')
-        x2, y2 = app2.get('easting'), app2.get('northing')
-        if x1 and y1 and x2 and y2:
-            dist = math.sqrt((x1-x2)**2 + (y1-y2)**2)
-            if dist < 50: return True
-    except: pass
-    
-    def clean_loc(loc):
-        loc = loc.lower().replace(',', ' ').replace('.', '')
-        loc = re.sub(r'\bst\b', 'street', loc)
-        loc = re.sub(r'\brd\b', 'road', loc)
-        loc = re.sub(r'\bave\b', 'avenue', loc)
-        return set(loc.split())
-        
-    loc1 = clean_loc(app1.get('location', ''))
-    loc2 = clean_loc(app2.get('location', ''))
-    common = {'at', 'the', 'of', 'site', 'land', 'co', 'dublin', 'road', 'street', 'avenue', 'house', 'development', 'permission'}
-    loc1 -= common
-    loc2 -= common
-    
-    if not loc1 or not loc2: return False
-    overlap = len(loc1.intersection(loc2))
-    union = len(loc1.union(loc2))
-    return union > 0 and (overlap / union) > 0.6
 
 # --- Analysis ---
 
@@ -157,6 +110,8 @@ def analyze_churn_agents():
     print("-" * 75)
     for r in by_fired[:20]:
         print(f"{r['name'][:30]:<30} | {r['invalid']:<6} | {r['fired']:<5} | {r['retained']:<8} | {r['loss_rate']:.1f}%")
+        
+    return by_fired
 
 if __name__ == "__main__":
     analyze_churn_agents()
