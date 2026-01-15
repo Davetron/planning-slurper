@@ -32,13 +32,6 @@ jobs:
           pip install awscli
           aws --version
 
-      - name: Debug secret presence (safe)
-        run: |
-          test -n "${{ secrets.R2_ACCOUNT_ID }}" && echo "R2_ACCOUNT_ID: set" || (echo "R2_ACCOUNT_ID: MISSING" && exit 1)
-          test -n "${{ secrets.R2_ACCESS_KEY_ID }}" && echo "R2_ACCESS_KEY_ID: set" || (echo "R2_ACCESS_KEY_ID: MISSING" && exit 1)
-          test -n "${{ secrets.R2_SECRET_ACCESS_KEY }}" && echo "R2_SECRET_ACCESS_KEY: set" || (echo "R2_SECRET_ACCESS_KEY: MISSING" && exit 1)
-          test -n "${{ secrets.R2_BUCKET }}" && echo "R2_BUCKET: set" || (echo "R2_BUCKET: MISSING" && exit 1)
-
       - name: Upload test.json to R2
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
