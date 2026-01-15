@@ -23,10 +23,11 @@ jobs:
           EOF
           cat out/test.json
 
-      - name: Install AWS CLI
+      - name: Install AWS CLI (pip)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y awscli
+          python -m pip install --upgrade pip
+          pip install awscli
+          aws --version
 
       - name: Upload test.json to R2
         env:
@@ -50,4 +51,3 @@ jobs:
         run: |
           aws s3 ls "s3://${R2_BUCKET}/test/" \
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-
