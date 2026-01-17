@@ -28,7 +28,11 @@ def analyze_agents():
     for r in rows:
         try:
             decision = (r[0] or "").upper()
-            js = json.loads(r[1])
+            # Raw JSON is now JSONB, so it's ALREADY a dict in Python
+            js = r[1]
+            if isinstance(js, str): # Fallback if legacy text still lurking or driver funny business
+                js = json.loads(js)
+
             agent = get_agent(js)
             
             if agent == "unknown/none" or len(agent) < 3:

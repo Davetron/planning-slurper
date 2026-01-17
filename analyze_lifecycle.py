@@ -26,17 +26,31 @@ def analyze_lifecycle():
     apps = []
     for r in rows:
         try:
-            js = json.loads(r[3])
+            # JSONB fix
+            js = r[3]
+            if isinstance(js, str):
+                js = json.loads(js)
+            else:
+                js = js.copy() # Avoid mutation of original if cached
+                
             js['_id'] = r[0]
             js['_decision'] = r[1] or ''
-            js['_reg_date'] = r[2]
+            js['_reg_date'] = r[2] # This is now a date object
             js['_lpa'] = r[4] or 'unknown'
             
+            # Date fix
             if r[2]:
-                try:
-                    js['_dt'] = datetime.fromisoformat(r[2].replace('Z', ''))
-                except:
-                    js['_dt'] = datetime.min
+                if isinstance(r[2], str):
+                    try:
+                        js['_dt'] = datetime.fromisoformat(r[2].replace('Z', ''))
+                    except:
+                         js['_dt'] = datetime.min
+                else: 
+                     # It's a date or datetime object
+                     if hasattr(r[2], 'combine'): # likely date
+                        js['_dt'] = datetime.combine(r[2], datetime.min.time())
+                     else:
+                        js['_dt'] = r[2]
             else:
                 js['_dt'] = datetime.min
                 
