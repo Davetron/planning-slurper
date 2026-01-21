@@ -2,6 +2,7 @@ import requests
 import json
 import time
 import os
+import re
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import dotenv
@@ -55,13 +56,16 @@ def _create_schema(c):
     
     try:
         c.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS last_hydrated_at TIMESTAMP")
-        
+
         # Migration: text -> date
         c.execute("ALTER TABLE applications ALTER COLUMN registration_date TYPE DATE USING registration_date::date")
-        
+
         # Migration: text -> jsonb
         c.execute("ALTER TABLE applications ALTER COLUMN raw_json TYPE JSONB USING raw_json::jsonb")
-        
+
+        # Migration: add download_url to documents
+        c.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS download_url TEXT")
+
     except psycopg2.Error as e:
          print(f"Migration notice: {e}")
          # Continue, likely already exists or other non-fatal
@@ -155,51 +159,48 @@ def save_application(app_data, lpa="dunlaoghaire"):
     conn.commit()
     conn.close()
 
-def save_document_metadata(app_id, doc_data, lpa="dunlaoghaire"):
+def save_document_metadata(app_id, doc_data, lpa="dunlaoghaire", download_url=None):
     """Saves or updates document metadata."""
     conn = get_db_connection()
     c = conn.cursor()
-    
+
     filename = doc_data.get('name') or doc_data.get('originalFileName')
     doc_hash = doc_data.get('documentHash')
     raw_json = json.dumps(doc_data)
-    
+
     # Mapped Fields
     doc_id = str(doc_data.get('documentId')) if doc_data.get('documentId') else None
     desc = doc_data.get('description')
     media_desc = doc_data.get('mediaDescription')
     received_date = doc_data.get('receivedDate')
     media_id = doc_data.get('mediaId')
-    
+
     # Check for existing document by different means to deduplicate
-    # Uniqueness isn't guaranteed by hash alone potentially, but let's try to match existing logic
-    # In Postgres, we can't easily do "INSERT IF NOT EXISTS by non-unique key", so we check first.
-    
     existing_id = None
     if doc_hash:
         c.execute("SELECT id FROM documents WHERE document_hash = %s", (doc_hash,))
         row = c.fetchone()
         if row: existing_id = row[0]
-        
+
     if not existing_id:
         c.execute("SELECT id FROM documents WHERE app_id = %s AND lpa = %s AND filename = %s", (app_id, lpa, filename))
         row = c.fetchone()
         if row: existing_id = row[0]
-    
+
     if not existing_id:
         c.execute('''INSERT INTO documents (
-                        app_id, lpa, filename, document_hash, raw_json, local_path, 
-                        doc_id, description, media_description, received_date, media_id)
-                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''', 
+                        app_id, lpa, filename, document_hash, raw_json, local_path,
+                        doc_id, description, media_description, received_date, media_id, download_url)
+                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
                      (app_id, lpa, filename, doc_hash, raw_json, None,
-                      doc_id, desc, media_desc, received_date, media_id))
+                      doc_id, desc, media_desc, received_date, media_id, download_url))
     else:
-        c.execute('''UPDATE documents 
-                     SET document_hash = %s, raw_json = %s, doc_id = %s, description = %s, 
-                         media_description = %s, received_date = %s, media_id = %s
-                     WHERE id = %s''', 
-                     (doc_hash, raw_json, doc_id, desc, media_desc, received_date, media_id, existing_id))
-             
+        c.execute('''UPDATE documents
+                     SET document_hash = %s, raw_json = %s, doc_id = %s, description = %s,
+                         media_description = %s, received_date = %s, media_id = %s, download_url = %s
+                     WHERE id = %s''',
+                     (doc_hash, raw_json, doc_id, desc, media_desc, received_date, media_id, download_url, existing_id))
+
     conn.commit()
     conn.close()
 
@@ -358,6 +359,44 @@ def fetch_planning_applications(limit=None, date_from='2025-01-09', date_to='202
         print(f"Error fetching data: {e}", flush=True)
         return []
 
+def fetch_dublin_city_documents(app_reference):
+    """
+    Fetches document metadata from Dublin City's web portal.
+    Returns list of document dicts compatible with save_document_metadata().
+    """
+    url = "https://webapps.dublincity.ie/PublicAccess_Live/SearchResult/RunThirdPartySearch"
+    params = {"FileSystemId": "PL", "Folder1_Ref": app_reference}
+
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        if response.status_code != 200:
+            return []
+
+        # Extract "var model = {...}" JSON from script tag
+        match = re.search(r'var model\s*=\s*(\{.*?\});', response.text, re.DOTALL)
+        if not match:
+            return []
+
+        model = json.loads(match.group(1))
+
+        # Map to our document format
+        docs = []
+        for row in model.get("Rows", []):
+            guid = row.get("Guid")
+            doc = {
+                "documentHash": guid,
+                "description": row.get("Doc_Type"),
+                "name": (row.get("Doc_Ref") or "").strip(),
+                "receivedDate": row.get("Date_Received"),
+            }
+            # Build download URL for Dublin City
+            download_url = f"https://webapps.dublincity.ie/PublicAccess_Live/Document/ViewDocument?id={guid}" if guid else None
+            docs.append((doc, download_url))
+        return docs
+    except Exception as e:
+        print(f"Error fetching Dublin City documents for {app_reference}: {e}", flush=True)
+        return []
+
 def hydrate_application(app_id, lpa="dunlaoghaire"):
     """Fetches and saves full details, documents, and conditions for a single app."""
     # print(f"Hydrating App {app_id}...", flush=True)
@@ -375,13 +414,29 @@ def hydrate_application(app_id, lpa="dunlaoghaire"):
         if r.status_code == 200:
             save_application(r.json(), lpa=lpa)
         
-        # 2. Documents
-        r = requests.get(f"{API_BASE_URL}/application/{app_id}/document", headers=headers)
-        if r.status_code == 200:
-            docs = r.json()
-            # print(f"  - Saving metadata for {len(docs)} documents.", flush=True)
-            for doc in docs:
-                save_document_metadata(app_id, doc, lpa=lpa)
+        # 2. Documents - LPA-specific handling
+        if lpa == "dublincity":
+            # Dublin City uses a separate web portal for documents
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT reference FROM applications WHERE id = %s AND lpa = %s", (app_id, lpa))
+            row = cur.fetchone()
+            conn.close()
+
+            if row and row[0]:
+                doc_items = fetch_dublin_city_documents(row[0])
+                for doc, download_url in doc_items:
+                    save_document_metadata(app_id, doc, lpa=lpa, download_url=download_url)
+        else:
+            # Standard API for other LPAs
+            r = requests.get(f"{API_BASE_URL}/application/{app_id}/document", headers=headers)
+            if r.status_code == 200:
+                docs = r.json()
+                for doc in docs:
+                    # Build download URL for standard LPAs
+                    doc_hash = doc.get('documentHash')
+                    download_url = f"{API_BASE_URL}/application/document/{lpa_code}/{doc_hash}" if doc_hash else None
+                    save_document_metadata(app_id, doc, lpa=lpa, download_url=download_url)
 
         # 3. Conditions
         r = requests.get(f"{API_BASE_URL}/application/{app_id}/conditions", headers=headers)
