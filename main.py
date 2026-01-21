@@ -432,11 +432,18 @@ def hydrate_application(app_id, lpa="dunlaoghaire"):
             r = requests.get(f"{API_BASE_URL}/application/{app_id}/document", headers=headers)
             if r.status_code == 200:
                 docs = r.json()
+                # Diagnostic logging for South Dublin document shortage investigation
+                if lpa == "southdublin" and len(docs) == 0:
+                    print(f"[SD DEBUG] App {app_id}: 0 docs returned from API", flush=True)
+                elif lpa == "southdublin" and len(docs) > 0:
+                    print(f"[SD DEBUG] App {app_id}: {len(docs)} docs found!", flush=True)
                 for doc in docs:
                     # Build download URL for standard LPAs
                     doc_hash = doc.get('documentHash')
                     download_url = f"{API_BASE_URL}/application/document/{lpa_code}/{doc_hash}" if doc_hash else None
                     save_document_metadata(app_id, doc, lpa=lpa, download_url=download_url)
+            else:
+                print(f"[DOC FETCH ERROR] App {app_id} ({lpa}): status {r.status_code}", flush=True)
 
         # 3. Conditions
         r = requests.get(f"{API_BASE_URL}/application/{app_id}/conditions", headers=headers)
