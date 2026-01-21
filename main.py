@@ -672,9 +672,10 @@ def run_sync_job(limit=100, date_from=None, date_to=None, lpa="dunlaoghaire"):
     Main Workflow:
     1. Fetches applications (incrementally if dates not provided).
     2. Hydrates them.
+
+    Note: setup_database() should be called once before parallel execution,
+    not here, to avoid deadlocks from concurrent ALTER TABLE operations.
     """
-    # ensure DB structure
-    setup_database()
     
     # Determine dates if not provided
     if not date_to:
