@@ -397,6 +397,61 @@ def fetch_dublin_city_documents(app_reference):
         print(f"Error fetching Dublin City documents for {app_reference}: {e}", flush=True)
         return []
 
+def fetch_south_dublin_documents(app_reference):
+    """
+    Fetches document metadata from South Dublin's web portal.
+    Returns list of (doc_dict, download_url) tuples compatible with save_document_metadata().
+
+    Portal URL: https://planning.southdublin.ie/Home/Documents?regref={reference}
+    """
+    url = f"https://planning.southdublin.ie/Home/Documents?regref={app_reference}"
+
+    try:
+        response = requests.get(url, timeout=30)
+        if response.status_code != 200:
+            return []
+
+        # Parse HTML table rows: <tr> containing date, link, and file type
+        # Pattern matches: <a href="/Home/ViewDocument?fileId=XXXXXX" ...>Description</a>
+        doc_pattern = re.compile(
+            r'<tr>\s*'
+            r'<td[^>]*headers="DateReceived"[^>]*>\s*([^<]*?)\s*</td>\s*'
+            r'<td[^>]*headers="FileName"[^>]*>\s*'
+            r'<a\s+href="/Home/ViewDocument\?fileId=(\d+)"[^>]*>([^<]+)</a>'
+            r'.*?</tr>',
+            re.DOTALL | re.IGNORECASE
+        )
+
+        docs = []
+        for match in doc_pattern.finditer(response.text):
+            received_date = match.group(1).strip()
+            file_id = match.group(2)
+            description = match.group(3).strip()
+
+            # Convert date from DD/MM/YYYY to ISO format
+            if received_date:
+                try:
+                    from datetime import datetime
+                    dt = datetime.strptime(received_date, "%d/%m/%Y")
+                    received_date = dt.strftime("%Y-%m-%dT00:00:00")
+                except ValueError:
+                    pass
+
+            doc = {
+                "documentHash": file_id,  # Use fileId as unique identifier
+                "documentId": file_id,
+                "description": description,
+                "name": description,
+                "receivedDate": received_date,
+            }
+            download_url = f"https://planning.southdublin.ie/Home/ViewDocument?fileId={file_id}"
+            docs.append((doc, download_url))
+
+        return docs
+    except Exception as e:
+        print(f"Error fetching South Dublin documents for {app_reference}: {e}", flush=True)
+        return []
+
 def hydrate_application(app_id, lpa="dunlaoghaire"):
     """Fetches and saves full details, documents, and conditions for a single app."""
     # print(f"Hydrating App {app_id}...", flush=True)
@@ -427,16 +482,23 @@ def hydrate_application(app_id, lpa="dunlaoghaire"):
                 doc_items = fetch_dublin_city_documents(row[0])
                 for doc, download_url in doc_items:
                     save_document_metadata(app_id, doc, lpa=lpa, download_url=download_url)
+        elif lpa == "southdublin":
+            # South Dublin uses a separate web portal for documents
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT reference FROM applications WHERE id = %s AND lpa = %s", (app_id, lpa))
+            row = cur.fetchone()
+            conn.close()
+
+            if row and row[0]:
+                doc_items = fetch_south_dublin_documents(row[0])
+                for doc, download_url in doc_items:
+                    save_document_metadata(app_id, doc, lpa=lpa, download_url=download_url)
         else:
-            # Standard API for other LPAs
+            # Standard API for other LPAs (dunlaoghaire, fingal)
             r = requests.get(f"{API_BASE_URL}/application/{app_id}/document", headers=headers)
             if r.status_code == 200:
                 docs = r.json()
-                # Diagnostic logging for South Dublin document shortage investigation
-                if lpa == "southdublin" and len(docs) == 0:
-                    print(f"[SD DEBUG] App {app_id}: 0 docs returned from API", flush=True)
-                elif lpa == "southdublin" and len(docs) > 0:
-                    print(f"[SD DEBUG] App {app_id}: {len(docs)} docs found!", flush=True)
                 for doc in docs:
                     # Build download URL for standard LPAs
                     doc_hash = doc.get('documentHash')
