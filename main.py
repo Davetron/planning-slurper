@@ -8,6 +8,9 @@ from psycopg2.extras import RealDictCursor
 import dotenv
 from datetime import datetime, timedelta
 import concurrent.futures
+from pyproj import Transformer
+
+_itm_transformer = Transformer.from_crs("EPSG:2157", "EPSG:4326", always_xy=False)
 
 dotenv.load_dotenv()
 
@@ -172,9 +175,23 @@ def save_application(app_data, lpa="dunlaoghaire"):
                     status = EXCLUDED.status,
                     grid_x = EXCLUDED.grid_x,
                     grid_y = EXCLUDED.grid_y''', 
-              (app_id, reference, reg_date, description, json.dumps(app_data), 
+              (app_id, reference, reg_date, description, json.dumps(app_data),
                location, decision, status, grid_x, grid_y, lpa))
-    
+
+    # Populate geom from grid coordinates if available
+    if grid_x and grid_y:
+        try:
+            gx, gy = float(grid_x), float(grid_y)
+            if 690000 <= gx <= 740000 and 710000 <= gy <= 750000:
+                lat, lon = _itm_transformer.transform(gx, gy)
+                c.execute("""
+                    UPDATE applications
+                    SET geom = ST_SetSRID(ST_MakePoint(%s, %s), 4326)
+                    WHERE id = %s AND lpa = %s AND geom IS NULL
+                """, (lon, lat, app_id, lpa))
+        except (ValueError, TypeError):
+            pass
+
     conn.commit()
     conn.close()
 
