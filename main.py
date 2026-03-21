@@ -103,6 +103,25 @@ def _create_schema(c):
                   raw_json TEXT,
                   FOREIGN KEY(app_id, lpa) REFERENCES applications(id, lpa))''')
 
+    # Add PostGIS extension and geometry column
+    try:
+        c.execute("CREATE EXTENSION IF NOT EXISTS postgis")
+        c.connection.commit()
+    except psycopg2.Error:
+        c.connection.rollback()
+
+    try:
+        c.execute("ALTER TABLE applications ADD COLUMN geom geometry(Point, 4326)")
+        c.connection.commit()
+    except psycopg2.Error:
+        c.connection.rollback()
+
+    try:
+        c.execute("CREATE INDEX IF NOT EXISTS idx_applications_geom ON applications USING GIST (geom)")
+        c.connection.commit()
+    except psycopg2.Error:
+        c.connection.rollback()
+
 # --- Data Access Object (DAO) Layer ---
 
 def save_application(app_data, lpa="dunlaoghaire"):
