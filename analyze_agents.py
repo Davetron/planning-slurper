@@ -6,7 +6,7 @@ import csv
 import sys
 from collections import defaultdict, Counter
 import dotenv
-from shared_utils import normalize_text, extract_email, get_agent
+from shared_utils import normalize_text, extract_email, get_agent, is_planning_application
 
 dotenv.load_dotenv()
 
@@ -32,6 +32,9 @@ def analyze_agents():
             js = r[1]
             if isinstance(js, str): # Fallback if legacy text still lurking or driver funny business
                 js = json.loads(js)
+
+            if not is_planning_application(js):
+                continue
 
             agent = get_agent(js)
             

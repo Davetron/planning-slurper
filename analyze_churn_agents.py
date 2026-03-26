@@ -6,7 +6,7 @@ import re
 import os
 from collections import defaultdict
 import dotenv
-from shared_utils import normalize_text, get_fullname, get_agent, location_match
+from shared_utils import normalize_text, get_fullname, get_agent, location_match, is_planning_application
 
 dotenv.load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -36,7 +36,10 @@ def analyze_churn_agents():
 
             js['_id'] = r[0]
             js['_decision'] = r[1] or ''
-            
+
+            if not is_planning_application(js):
+                continue
+
             # Date fix
             if r[2]:
                 if isinstance(r[2], str):

@@ -1,6 +1,31 @@
 import re
 import math
 
+# Application types that represent substantive planning applications.
+# Excludes compliance submissions, S5 declarations, exemption certificates,
+# extension of duration, licences, Part 8, and fire certs.
+PLANNING_APPLICATION_TYPES = {
+    'Permission',
+    'Permission and Retention',
+    'Permission (LRD)',
+    'Permission (SDZ)',
+    'Outline Permission',
+    'Retention',
+    'Permission for Retention',
+    'SDZ Application',
+    'Perm on foot of Outline permission',
+    'Permission and Outline Permission',
+    'Perm.consequent on Grant of Outline Perm',
+    'Strategic Infrastructure Application',
+}
+
+def is_planning_application(raw_json):
+    """Returns True if the application is a substantive planning application
+    (not compliance, S5, exemption, licence, etc.)."""
+    app_type = raw_json.get('applicationType') or ''
+    return app_type in PLANNING_APPLICATION_TYPES
+
+
 def normalize_text(text):
     if not text: return "Unknown/None"
     text = text.lower()
