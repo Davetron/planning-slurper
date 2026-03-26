@@ -66,12 +66,36 @@ def get_agent(raw_app, dedup_map=None):
     return normalize_text(name)
 
 
+def _extract_domain(email):
+    """Extracts the domain from an email address, excluding common free providers."""
+    FREE_PROVIDERS = {
+        'gmail.com', 'hotmail.com', 'yahoo.com', 'yahoo.ie', 'outlook.com',
+        'icloud.com', 'live.com', 'live.ie', 'me.com', 'msn.com',
+        'hotmail.co.uk', 'googlemail.com', 'aol.com', 'protonmail.com',
+        'eircom.net', 'mail.com',
+    }
+    if '@' not in email:
+        return None
+    domain = email.split('@', 1)[1].strip().lower()
+    if domain in FREE_PROVIDERS:
+        return None
+    return domain
+
+
 def build_agent_dedup_map(apps):
     """Builds an email -> canonical agent name mapping from a list of raw_json dicts.
-    For each email address, the canonical name is the most frequently used
-    agentSurname (after normalisation), breaking ties alphabetically."""
-    from collections import Counter
 
+    Two-pass deduplication:
+    1. Group by email domain (excluding free providers like gmail) — all emails
+       sharing a professional domain (e.g., info@ and stephen@ at jearchitecture.ie)
+       are treated as the same practice.
+    2. Within each domain group, pick the most frequently used normalised
+       agentSurname as the canonical name.
+
+    For free-provider emails (gmail, hotmail, etc.), falls back to per-email grouping."""
+    from collections import Counter, defaultdict
+
+    # Collect all (email, normalised_name, count) tuples
     email_names = {}  # email -> Counter of normalised names
     for app in apps:
         email = (app.get('agentEmail') or '').strip().lower()
@@ -85,10 +109,30 @@ def build_agent_dedup_map(apps):
             email_names[email] = Counter()
         email_names[email][normalised] += 1
 
-    # Pick the most common name for each email
+    # Group emails by professional domain
+    domain_emails = defaultdict(set)  # domain -> set of emails
+    free_emails = set()  # emails with free provider domains
+    for email in email_names:
+        domain = _extract_domain(email)
+        if domain:
+            domain_emails[domain].add(email)
+        else:
+            free_emails.add(email)
+
+    # For each domain group, merge all name counters and pick the canonical name
     dedup_map = {}
-    for email, name_counts in email_names.items():
-        canonical = name_counts.most_common(1)[0][0]
+
+    for domain, emails in domain_emails.items():
+        merged = Counter()
+        for email in emails:
+            merged.update(email_names[email])
+        canonical = merged.most_common(1)[0][0]
+        for email in emails:
+            dedup_map[email] = canonical
+
+    # For free-provider emails, use per-email canonical name (no domain grouping)
+    for email in free_emails:
+        canonical = email_names[email].most_common(1)[0][0]
         dedup_map[email] = canonical
 
     return dedup_map
