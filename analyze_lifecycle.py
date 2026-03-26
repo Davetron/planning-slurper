@@ -5,7 +5,7 @@ from datetime import datetime
 import re
 import os
 import dotenv
-from shared_utils import normalize_text, get_fullname, get_agent, location_match, is_planning_application
+from shared_utils import normalize_text, get_fullname, get_agent, location_match, is_planning_application, build_agent_dedup_map
 
 dotenv.load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -61,7 +61,11 @@ def analyze_lifecycle():
         except: pass
         
     apps.sort(key=lambda x: x['_dt'])
-    
+
+    # Build email-based dedup map
+    dedup_map = build_agent_dedup_map(apps)
+    print(f"Dedup map: {len(dedup_map)} emails -> canonical agents", flush=True)
+
     # Helper function to calculate stats for a given list of apps
     def calculate_stats(app_list, label="Overall"):
         invalids = [a for a in app_list if 'INVALID' in a['_decision'].upper()]
@@ -102,8 +106,8 @@ def analyze_lifecycle():
                 delta = (match['_dt'] - inv_dt).days
                 total_days += delta
                 
-                agent_inv = get_agent(inv)
-                agent_new = get_agent(match)
+                agent_inv = get_agent(inv, dedup_map)
+                agent_new = get_agent(match, dedup_map)
                 
                 is_churn = False
                 if agent_inv and agent_new:

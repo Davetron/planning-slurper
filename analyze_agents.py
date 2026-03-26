@@ -6,7 +6,7 @@ import csv
 import sys
 from collections import defaultdict, Counter
 import dotenv
-from shared_utils import normalize_text, extract_email, get_agent, is_planning_application
+from shared_utils import normalize_text, extract_email, get_agent, is_planning_application, build_agent_dedup_map
 
 dotenv.load_dotenv()
 
@@ -23,8 +23,19 @@ def analyze_agents():
     rows = c.fetchall()
     conn.close()
     
+    # Build email-based dedup map from all planning applications
+    all_js = []
+    for r in rows:
+        js = r[1]
+        if isinstance(js, str):
+            js = json.loads(js)
+        if is_planning_application(js):
+            all_js.append(js)
+    dedup_map = build_agent_dedup_map(all_js)
+    print(f"Dedup map: {len(dedup_map)} emails -> canonical agents", flush=True)
+
     agent_stats = defaultdict(lambda: {'total': 0, 'invalid': 0, 'emails': Counter(), 'phones': Counter()})
-    
+
     for r in rows:
         try:
             decision = (r[0] or "").upper()
@@ -36,7 +47,7 @@ def analyze_agents():
             if not is_planning_application(js):
                 continue
 
-            agent = get_agent(js)
+            agent = get_agent(js, dedup_map)
             
             if agent == "unknown/none" or len(agent) < 3:
                 continue

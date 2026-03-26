@@ -52,11 +52,46 @@ def get_fullname(raw_app):
     sur = raw_app.get('applicantSurname') or ''
     return normalize_text(f"{fore} {sur}")
 
-def get_agent(raw_app):
+def get_agent(raw_app, dedup_map=None):
+    """Returns the normalised agent name for an application.
+    If dedup_map is provided, uses the agent's email to resolve to a
+    canonical practice name, collapsing spelling variants."""
+    if dedup_map:
+        email = (raw_app.get('agentEmail') or '').strip().lower()
+        if email and email in dedup_map:
+            return dedup_map[email]
     name = raw_app.get('agentContactName') or raw_app.get('agentName') or ''
     sur = raw_app.get('agentSurname') or ''
     if not name and sur: name = sur
     return normalize_text(name)
+
+
+def build_agent_dedup_map(apps):
+    """Builds an email -> canonical agent name mapping from a list of raw_json dicts.
+    For each email address, the canonical name is the most frequently used
+    agentSurname (after normalisation), breaking ties alphabetically."""
+    from collections import Counter
+
+    email_names = {}  # email -> Counter of normalised names
+    for app in apps:
+        email = (app.get('agentEmail') or '').strip().lower()
+        surname = app.get('agentSurname') or ''
+        if not email or not surname or len(surname) < 3:
+            continue
+        normalised = normalize_text(surname)
+        if normalised == "unknown/none":
+            continue
+        if email not in email_names:
+            email_names[email] = Counter()
+        email_names[email][normalised] += 1
+
+    # Pick the most common name for each email
+    dedup_map = {}
+    for email, name_counts in email_names.items():
+        canonical = name_counts.most_common(1)[0][0]
+        dedup_map[email] = canonical
+
+    return dedup_map
 
 def location_match(app1, app2):
     try:

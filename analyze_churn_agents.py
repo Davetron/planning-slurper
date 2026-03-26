@@ -6,7 +6,7 @@ import re
 import os
 from collections import defaultdict
 import dotenv
-from shared_utils import normalize_text, get_fullname, get_agent, location_match, is_planning_application
+from shared_utils import normalize_text, get_fullname, get_agent, location_match, is_planning_application, build_agent_dedup_map
 
 dotenv.load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -56,6 +56,11 @@ def analyze_churn_agents():
         except: pass
     
     apps.sort(key=lambda x: x['_dt'])
+
+    # Build email-based dedup map
+    dedup_map = build_agent_dedup_map(apps)
+    print(f"Dedup map: {len(dedup_map)} emails -> canonical agents", flush=True)
+
     invalids = [a for a in apps if 'INVALID' in a['_decision'].upper()]
     
     # 1. Map Apps by Applicant for fast lookup
@@ -72,10 +77,10 @@ def analyze_churn_agents():
         inv_id = inv['_id']
         inv_name = get_fullname(inv)
         inv_dt = inv['_dt']
-        agent_inv = get_agent(inv)
-        
+        agent_inv = get_agent(inv, dedup_map)
+
         if not agent_inv or len(agent_inv) < 3: continue
-        
+
         agent_stats[agent_inv]['invalid_count'] += 1
         
         # Find Follow-up
@@ -89,7 +94,7 @@ def analyze_churn_agents():
                 break
         
         if match:
-            agent_new = get_agent(match)
+            agent_new = get_agent(match, dedup_map)
             
             # Churn Logic
             is_churn = False
