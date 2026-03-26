@@ -358,7 +358,7 @@ def fetch_planning_applications(limit=None, date_from='2025-01-09', date_to='202
 
     try:
         print(f"Fetching data for {lpa} (Code: {lpa_code})...", flush=True)
-        response = requests.get(url, headers=headers, params=params)
+        response = requests.get(url, headers=headers, params=params, timeout=120)
         response.raise_for_status()
         
         data = response.json()
@@ -727,7 +727,7 @@ def run_sync_job(limit=100, date_from=None, date_to=None, lpa="dunlaoghaire"):
             print(f"Found existing data for {lpa} up to {latest}.", flush=True)
             date_from = latest 
         else:
-            date_from = '2024-01-01' # Fallback default
+            date_from = '2023-01-01' # Fallback default — backfill from earliest available data
             print(f"No existing data for {lpa}. Defaulting to {date_from}.", flush=True)
     
     print(f"--- Starting Sync Job (Limit: {limit}, LPA: {lpa}, Date Range: {date_from} -> {date_to}) ---", flush=True)
