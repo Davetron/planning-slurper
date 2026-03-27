@@ -4,7 +4,25 @@
       "Bash(python:*)",
       "Bash(pytest:*)",
       "Bash(pip:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "WebFetch(domain:webapps.dublincity.ie)",
+      "Bash(git log:*)",
+      "WebFetch(domain:identity.agileapplications.ie)",
+      "WebFetch(domain:planningapi.agileapplications.ie)",
+      "Bash(python3:*)",
+      "mcp__Neon__list_projects",
+      "mcp__Neon__run_sql",
+      "Bash(pip install:*)",
+      "Skill(commit-smart)",
+      "Bash(git commit:*)",
+      "mcp__Neon__describe_table_schema",
+      "Bash(curl:*)",
+      "Bash(__NEW_LINE_68fbfd4383c8f6fd__ echo \"\")",
+      "Bash(__NEW_LINE_ff849d31eea7fae1__ echo \"\")",
+      "Bash(git push:*)",
+      "mcp__Neon__get_database_tables",
+      "WebSearch",
+      "WebFetch(domain:www.irishstatutebook.ie)"
     ],
     "deny": []
   }
